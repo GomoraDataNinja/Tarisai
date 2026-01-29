@@ -76,11 +76,11 @@ html, body, [class*="css"] {{
     background-color: {WF_BG};
     color: {WF_TEXT};
 }}
-.block-container {
-    padding-top: 4.2rem;
+.block-container {{
+    padding-top: 1.1rem;
     padding-bottom: 2rem;
     max-width: 1250px;
-}
+}}
 
 .tarisai-topbar {{
     background: {WF_RED};
@@ -1890,5 +1890,3 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-
-
