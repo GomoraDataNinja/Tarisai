@@ -80,7 +80,7 @@ html, body, [class*="css"] {{
     padding-top: 4.2rem;
     padding-bottom: 2rem;
     max-width: 1250px;
-}}
+}
 
 .tarisai-topbar {{
     background: {WF_RED};
@@ -1890,4 +1890,5 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
