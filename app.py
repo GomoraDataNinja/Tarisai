@@ -77,7 +77,7 @@ html, body, [class*="css"] {{
     color: {WF_TEXT};
 }}
 .block-container {{
-    padding-top: 4.4rem;
+    padding-top: 4.1rem;
     padding-bottom: 2rem;
     max-width: 1250px;
 }}
@@ -1890,4 +1890,5 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
