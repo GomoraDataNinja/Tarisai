@@ -9,16 +9,13 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter, column_index_from_string
 from copy import copy as pycopy
 
-# Optional web lookup (works only if your deployment environment allows outbound internet)
-try:
-    import requests
-except Exception:
-    requests = None
-
+# =========================
+# Page config
+# =========================
 st.set_page_config(page_title="Tarisai", layout="wide")
 
 # =========================
-# Brand colours (locked)
+# Theme (Wells Fargo style)
 # =========================
 WF_RED = "#D71E28"
 WF_BG = "#F3F3F3"
@@ -28,52 +25,92 @@ WF_MUTED = "#666666"
 WF_BORDER = "#E6E6E6"
 
 # =========================
-# Global CSS (keeps UI stable on deploy)
+# Streamlit compatibility helpers
+# =========================
+def safe_primary_button(label, use_container_width=False, key=None):
+    try:
+        return st.button(label, type="primary", use_container_width=use_container_width, key=key)
+    except TypeError:
+        return st.button(label, use_container_width=use_container_width, key=key)
+
+def safe_download_button(label, data, file_name, mime, use_container_width=False, key=None):
+    try:
+        return st.download_button(
+            label,
+            data=data,
+            file_name=file_name,
+            mime=mime,
+            use_container_width=use_container_width,
+            key=key,
+        )
+    except TypeError:
+        return st.download_button(
+            label,
+            data=data,
+            file_name=file_name,
+            mime=mime,
+            key=key,
+        )
+
+def safe_tabs(labels):
+    try:
+        return st.tabs(labels)
+    except Exception:
+        # Older Streamlit fallback
+        return [st.container() for _ in labels]
+
+def status_box(label):
+    try:
+        return st.status(label, expanded=True)
+    except Exception:
+        st.info(label)
+        return None
+
+# =========================
+# CSS (locks UI clarity on deploy)
 # =========================
 st.markdown(
     f"""
 <style>
 html, body, [class*="css"] {{
-    background-color: {WF_BG} !important;
-    color: {WF_TEXT} !important;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+    background-color: {WF_BG};
+    color: {WF_TEXT};
 }}
 .block-container {{
     padding-top: 1.1rem;
     padding-bottom: 2rem;
     max-width: 1250px;
 }}
-/* Hide default streamlit header spacing a bit */
-header[data-testid="stHeader"] {{
-    background: transparent !important;
-}}
 
-/* Topbar */
 .tarisai-topbar {{
     background: {WF_RED};
     color: white;
     padding: 16px 18px;
     border-radius: 14px;
-    margin-bottom: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    margin-bottom: 16px;
+    position: relative;
 }}
-.tarisai-title {{
-    font-size: 34px;
+.tarisai-brand-center {{
+    text-align: center;
+    font-size: 30px;
     font-weight: 900;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
     line-height: 1.1;
-    text-align: center;
 }}
-.tarisai-sub {{
-    font-size: 12px;
-    opacity: 0.95;
+.tarisai-sub-center {{
     text-align: center;
-    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.98;
+    margin-top: 2px;
+}}
+.tarisai-topbar-right {{
+    position: absolute;
+    right: 18px;
+    top: 18px;
+    font-size: 12px;
+    opacity: 0.98;
 }}
 
-/* Cards */
 .tarisai-card {{
     background: {WF_CARD};
     border: 1px solid {WF_BORDER};
@@ -91,7 +128,7 @@ header[data-testid="stHeader"] {{
 .tarisai-hero h2 {{
     margin: 0;
     padding: 0;
-    font-size: 26px;
+    font-size: 28px;
     font-weight: 900;
     color: {WF_TEXT};
 }}
@@ -107,12 +144,34 @@ header[data-testid="stHeader"] {{
     font-weight: 700;
 }}
 
-/* Sidebar */
+.small-muted {{
+    color: {WF_MUTED};
+    font-size: 12px;
+}}
+
+hr {{
+    border: none;
+    border-top: 1px solid {WF_BORDER};
+    margin: 10px 0;
+}}
+
+div.stButton > button[kind="primary"] {{
+    background: {WF_RED} !important;
+    color: white !important;
+    border: 1px solid {WF_RED} !important;
+    border-radius: 12px !important;
+    padding: 0.6rem 0.9rem !important;
+    font-weight: 800 !important;
+}}
+div.stButton > button {{
+    border-radius: 12px !important;
+}}
+
 [data-testid="stSidebar"] {{
     background: {WF_CARD} !important;
     border-right: 1px solid {WF_BORDER};
 }}
-/* File uploader */
+
 [data-testid="stFileUploader"] {{
     background: {WF_CARD};
     border: 1px solid {WF_BORDER};
@@ -122,29 +181,23 @@ header[data-testid="stHeader"] {{
 [data-testid="stFileUploader"] section {{
     border: 2px dashed {WF_BORDER} !important;
     border-radius: 12px !important;
-    transition: border-color 0.3s ease !important;
+    transition: border-color 0.2s ease !important;
 }}
 [data-testid="stFileUploader"] section:hover {{
     border-color: {WF_RED} !important;
 }}
 
-/* Buttons */
-div.stButton > button {{
-    border-radius: 12px !important;
-    font-weight: 800 !important;
+/* Force uploader heading visibility on deploy */
+div[data-testid="stFileUploader"] label,
+div[data-testid="stFileUploader"] label[data-testid="stWidgetLabel"] {{
+    color: {WF_TEXT} !important;
+    font-weight: 900 !important;
+    font-size: 16px !important;
+    opacity: 1 !important;
 }}
-div.stButton > button[kind="primary"] {{
-    background: {WF_RED} !important;
-    color: white !important;
-    border: 1px solid {WF_RED} !important;
-    padding: 0.6rem 0.9rem !important;
-}}
-.stButton>button {{
-    transition: all 0.2s ease-in-out !important;
-}}
-.stButton>button:hover {{
-    transform: translateY(-1px) !important;
-    box-shadow: 0 4px 12px rgba(215, 30, 40, 0.15) !important;
+div[data-testid="stFileUploader"] small {{
+    color: {WF_MUTED} !important;
+    opacity: 1 !important;
 }}
 
 /* Progress bar */
@@ -152,30 +205,13 @@ div.stButton > button[kind="primary"] {{
     background-color: {WF_RED} !important;
 }}
 
-hr {{
-    border: none;
-    border-top: 1px solid {WF_BORDER};
-    margin: 10px 0;
+/* Hover polish */
+.stButton>button {{
+    transition: all 0.2s ease-in-out !important;
 }}
-.small-muted {{
-    color: {WF_MUTED};
-    font-size: 12px;
-}}
-.kpi-box {{
-    background: {WF_CARD};
-    border: 1px solid {WF_BORDER};
-    border-radius: 14px;
-    padding: 12px 14px;
-}}
-.kpi-title {{
-    font-size: 12px;
-    color: {WF_MUTED};
-    font-weight: 700;
-}}
-.kpi-value {{
-    font-size: 22px;
-    font-weight: 900;
-    color: {WF_TEXT};
+.stButton>button:hover {{
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(215, 30, 40, 0.15) !important;
 }}
 </style>
 """,
@@ -188,10 +224,9 @@ hr {{
 st.markdown(
     f"""
 <div class="tarisai-topbar">
-  <div>
-    <div class="tarisai-title">Tarisai</div>
-    <div class="tarisai-sub">Upload. Reconcile. Download.</div>
-  </div>
+  <div class="tarisai-brand-center">Tarisai</div>
+  <div class="tarisai-sub-center">Upload. Reconcile. Download.</div>
+  <div class="tarisai-topbar-right">Recon bot</div>
 </div>
 """,
     unsafe_allow_html=True,
@@ -200,9 +235,9 @@ st.markdown(
 st.markdown(
     """
 <div class="tarisai-hero">
-  <h2><b>Reconciliation, done like an analyst</b></h2>
-  <p>Drop your Supplier, Ledger, and Template files. Tarisai detects tables, maps columns, reconciles, and builds your output file.</p>
-  <div class="welcome">Hello. Upload your files and press Run. Tarisai handles the rest.</div>
+  <h2>Reconciliation, done like an analyst</h2>
+  <p>Drop your Supplier, Ledger, and Template files. I will find the tables, map columns, reconcile, and build your output file.</p>
+  <div class="welcome">Hello. Upload your files and press Run. I will handle the rest.</div>
 </div>
 """,
     unsafe_allow_html=True,
@@ -423,9 +458,10 @@ def infer_col_by_type(df: pd.DataFrame, role: str):
         pct_num = float(n.notna().mean())
         avg_len = float(s.map(len).mean())
         sparsity = float(df[c].isna().mean())
-        header = str(c).lower()
 
+        header = str(c).lower()
         score = 0.0
+
         if role == "date":
             score = pct_date * 10 - sparsity * 2
             if "date" in header or "posting" in header:
@@ -566,6 +602,7 @@ def normalize_supplier_sheet(df: pd.DataFrame, sheet_name: str, colmap: dict, ke
 
     out["amt_r2"] = out["amount_signed"].map(round2)
     out["amt_r0"] = out["amount_signed"].map(round0)
+
     out["sheet_name"] = sheet_name
     out["row_id"] = [f"S_{sheet_name}_{i}" for i in range(len(out))]
 
@@ -783,18 +820,18 @@ def score_docid_match(amount_diff_abs: float, tol: float):
     if tol <= 0:
         tol = 0.01
     if amount_diff_abs <= tol:
-        return 0.98, "DocID matched and totals are within tolerance"
+        return 0.98, "DocID match and totals within tolerance"
     if amount_diff_abs <= tol * 5:
-        return 0.72, "DocID matched but totals differ"
-    return 0.60, "DocID matched but totals differ a lot"
+        return 0.72, "DocID match but totals differ"
+    return 0.60, "DocID match but totals differ a lot"
 
 def score_invoice_match(amount_diff_abs: float, tol: float, d_diff: int, date_window: int, overlap: float):
     score = 0.94
-    reason = "Invoice reference matched and totals compared"
+    reason = "Invoice reference match and totals compared"
 
     if amount_diff_abs > tol:
         score -= min(0.25, amount_diff_abs / max(0.01, tol) * 0.05)
-        reason = "Invoice reference matched but totals differ"
+        reason = "Invoice reference match but totals differ"
 
     if d_diff > date_window:
         score -= 0.10
@@ -806,7 +843,7 @@ def score_invoice_match(amount_diff_abs: float, tol: float, d_diff: int, date_wi
 
 def score_payment_match(d_diff: int, date_window: int, overlap: float):
     score = 0.72
-    reason = "Matched by amount within a date window"
+    reason = "Matched by amount and date window"
 
     if d_diff > date_window:
         score -= 0.18
@@ -814,7 +851,7 @@ def score_payment_match(d_diff: int, date_window: int, overlap: float):
 
     if overlap >= 0.20:
         score += 0.08
-        reason = "Matched by amount, date, and shared reference tokens"
+        reason = "Matched by amount, date, and reference tokens"
 
     return max(0.35, float(score)), reason
 
@@ -835,12 +872,8 @@ def reconcile_docid(statement_df: pd.DataFrame, ledger_df: pd.DataFrame, amount_
 
     l_group = (
         ltx.groupby("docid", as_index=False)
-        .agg(
-            doc_date=("doc_date", "min"),
-            ref=("external_doc_raw", "first"),
-            details=("description", "first"),
-            amount=("amount_signed", lambda s: float(pd.Series(s).abs().sum())),
-        )
+        .agg(doc_date=("doc_date", "min"), ref=("external_doc_raw", "first"), details=("description", "first"),
+             amount=("amount_signed", lambda s: float(pd.Series(s).abs().sum())))
     )
     l_group["amount"] = l_group["amount"].abs()
 
@@ -986,12 +1019,7 @@ def reconcile_invoice_style(supplier: pd.DataFrame, ledger: pd.DataFrame, amount
         overlap = token_overlap(str(srow["details"]), str(lrow["details"]))
 
         sc, rs = score_invoice_match(abs(diff), amount_tol, d_diff, int(date_window_days), overlap)
-        if abs(diff) <= amount_tol and sc >= min_auto_conf:
-            status = "Matched"
-        elif abs(diff) > amount_tol:
-            status = "Amount mismatch"
-        else:
-            status = "Needs review"
+        status = "Matched" if (abs(diff) <= amount_tol and sc >= min_auto_conf) else ("Amount mismatch" if abs(diff) > amount_tol else "Needs review")
 
         details.append(
             mk_detail(
@@ -1042,12 +1070,7 @@ def reconcile_invoice_style(supplier: pd.DataFrame, ledger: pd.DataFrame, amount
             d_diff = int(best["date_diff"])
 
             sc, rs = score_payment_match(d_diff, int(date_window_days), overlap)
-            if abs(diff) <= amount_tol and sc >= min_auto_conf:
-                status = "Matched"
-            elif abs(diff) > amount_tol:
-                status = "Amount mismatch"
-            else:
-                status = "Needs review"
+            status = "Matched" if (abs(diff) <= amount_tol and sc >= min_auto_conf) else ("Amount mismatch" if abs(diff) > amount_tol else "Needs review")
 
             details.append(mk_detail(srow, lrow, status, "payment_amount_date", f"PAY|{amt_key}", sc, rs))
             used_l.add(best["row_id"])
@@ -1298,159 +1321,73 @@ def load_best_table_from_workbook(uploaded_file):
 
 def validate_files(supplier_file, ledger_file, template_file):
     errors = []
+
     if not supplier_file:
-        errors.append("Please upload a Supplier file.")
+        errors.append("Please upload a Supplier file")
     if not ledger_file:
-        errors.append("Please upload a Ledger file.")
+        errors.append("Please upload a Ledger file")
     if not template_file:
-        errors.append("Please upload a Template file.")
+        errors.append("Please upload a Template file")
+
     if errors:
         return False, errors
 
     valid_extensions = [".xlsx", ".xls"]
     for file_obj, name in [(supplier_file, "Supplier"), (ledger_file, "Ledger"), (template_file, "Template")]:
         if file_obj and not any(file_obj.name.lower().endswith(ext) for ext in valid_extensions):
-            errors.append(f"{name} file must be an Excel file (.xlsx or .xls).")
+            errors.append(f"{name} file must be an Excel file (.xlsx or .xls)")
 
     if errors:
         return False, errors
+
     return True, []
 
 def show_welcome_state():
     st.markdown(
-        f"""
-        <div class="tarisai-card" style="text-align:center; padding: 28px 18px;">
-            <h3 style="margin-bottom: 8px; color:{WF_TEXT};"><b>Ready to reconcile</b></h3>
-            <div style="color:{WF_MUTED}; max-width: 720px; margin: 0 auto 12px;">
-                Upload your Supplier, Ledger, and Template Excel files. Tarisai will detect tables, match transactions, and generate an output workbook.
-            </div>
-            <div style="margin-top: 14px; color:{WF_MUTED}; font-size: 13px;">
-                Step 1: Upload all three files on the left
-                <br/>Step 2: Press Run reconciliation
-                <br/>Step 3: Download the output
-            </div>
-        </div>
-        """,
+        """
+<div class="tarisai-card" style="text-align: center; padding: 40px 20px;">
+    <h3 style="margin-bottom: 12px; color: #111111; font-weight: 900;">Ready to reconcile</h3>
+    <p style="color: #666666; max-width: 650px; margin: 0 auto;">
+        Upload your Supplier, Ledger, and Template Excel files. Tarisai will detect tables, match transactions, and generate the reconciliation output.
+    </p>
+</div>
+""",
         unsafe_allow_html=True,
     )
 
-def ddg_instant_answer(query: str):
-    if requests is None:
-        return {"ok": False, "error": "requests is not available in this environment."}
-    try:
-        url = "https://api.duckduckgo.com/"
-        params = {"q": query, "format": "json", "no_redirect": 1, "no_html": 1, "skip_disambig": 0}
-        r = requests.get(url, params=params, timeout=8)
-        r.raise_for_status()
-        data = r.json()
-        text = data.get("AbstractText") or ""
-        heading = data.get("Heading") or ""
-        src = data.get("AbstractURL") or ""
-        related = data.get("RelatedTopics") or []
-        top_related = []
-        for item in related:
-            if isinstance(item, dict) and "Text" in item and "FirstURL" in item:
-                top_related.append({"text": item["Text"], "url": item["FirstURL"]})
-            if len(top_related) >= 3:
-                break
-        return {"ok": True, "heading": heading, "text": text, "source": src, "related": top_related}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-def tarisai_answer(user_q: str, match_detail: pd.DataFrame):
-    q = (user_q or "").strip()
-    if not q:
-        return {"answer": "Ask a question about a specific invoice, DocID, status, or variance.", "rows": None, "web": None}
-
-    q_up = q.upper()
-
-    # Detect common identifiers (DocID or AE invoice)
-    docid = extract_docid(q_up)
-    ae_hits = extract_ae_candidates(q_up)
-
-    md = match_detail.copy()
-    md["__score"] = md.get("match_score", 0).fillna(0)
-
-    # Basic intent
-    wants_mismatch = ("MISMATCH" in q_up) or ("DIFFER" in q_up) or ("VARIANCE" in q_up)
-    wants_missing = ("MISSING" in q_up) or ("NOT IN" in q_up)
-    wants_web = ("WEB" in q_up) or ("SEARCH" in q_up) or ("LOOK UP" in q_up) or ("GOOGLE" in q_up)
-
-    # Filter rows
-    filters = []
-    if docid:
-        filters.append(md["match_key"].astype(str).str.contains(docid, na=False))
-    if ae_hits:
-        for ae in ae_hits:
-            filters.append(md["match_key"].astype(str).str.contains(ae, na=False))
-            filters.append(md.get("supplier_ref", pd.Series([""] * len(md))).astype(str).str.contains(ae, na=False))
-            filters.append(md.get("ledger_ref", pd.Series([""] * len(md))).astype(str).str.contains(ae, na=False))
-
-    if filters:
-        m = filters[0]
-        for f in filters[1:]:
-            m = m | f
-        md2 = md[m].copy()
-    else:
-        # fallback fuzzy search in refs/details
-        md2 = md.copy()
-        blob = (md2.get("supplier_ref", "")).astype(str) + " " + (md2.get("ledger_ref", "")).astype(str) + " " + (md2.get("supplier_details", "")).astype(str) + " " + (md2.get("ledger_details", "")).astype(str)
-        md2 = md2[blob.str.upper().str.contains(q_up, na=False)].copy()
-
-    if wants_mismatch:
-        md2 = md2[md2["status"].astype(str).str.contains("Amount mismatch", na=False)].copy()
-    if wants_missing:
-        md2 = md2[md2["status"].astype(str).str.contains("Missing", na=False)].copy()
-
-    if md2.empty:
-        ans = "I could not find a matching line for that question in the reconciliation detail."
-        return {"answer": ans, "rows": None, "web": ddg_instant_answer(q) if wants_web else None}
-
-    md2 = md2.sort_values(["__score"], ascending=False).head(10)
-
-    # Build explanation
-    top = md2.iloc[0].to_dict()
-    status = str(top.get("status", ""))
-    score = float(top.get("match_score", 0) or 0)
-    reason = str(top.get("match_reason", ""))
-
-    # Variance wording
-    diff = top.get("difference_supplier_minus_ledger", None)
-    if diff is None and "difference_statement_minus_ledger" in top:
-        diff = top.get("difference_statement_minus_ledger", None)
-
-    diff_txt = ""
-    if diff is not None and not (pd.isna(diff)):
-        try:
-            diff_txt = f"Variance: {float(diff):,.2f}"
-        except Exception:
-            diff_txt = f"Variance: {diff}"
-
-    ans = (
-        f"Top result status: {status}\n"
-        f"Confidence score: {score:.2f}\n"
-        f"Reason: {reason}\n"
-        f"{diff_txt}".strip()
-    )
-
-    return {"answer": ans, "rows": md2.drop(columns=["__score"], errors="ignore"), "web": ddg_instant_answer(q) if wants_web else None}
-
 # =========================
-# Main screen layout
+# Main screen
 # =========================
 left, right = st.columns([2.2, 1.0])
 
 with left:
     st.markdown('<div class="tarisai-card">', unsafe_allow_html=True)
-    st.markdown("<b>FILES</b>", unsafe_allow_html=True)
-    supplier_file = st.file_uploader("Supplier file", type=["xlsx", "xls"])
-    ledger_file = st.file_uploader("Ledger file", type=["xlsx", "xls"])
-    template_file = st.file_uploader("Template file", type=["xlsx", "xls"])
+
+    supplier_file = st.file_uploader(
+        "Supplier file",
+        type=["xlsx", "xls"],
+        help="Upload supplier statement or invoice list",
+        label_visibility="visible",
+    )
+
+    ledger_file = st.file_uploader(
+        "Ledger file",
+        type=["xlsx", "xls"],
+        help="Upload your accounts ledger extract",
+        label_visibility="visible",
+    )
+
+    template_file = st.file_uploader(
+        "Recon format",
+        type=["xlsx", "xls"],
+        help="Upload the reconciliation template",
+        label_visibility="visible",
+    )
+
     st.markdown("</div>", unsafe_allow_html=True)
 
 with right:
     st.markdown('<div class="tarisai-card">', unsafe_allow_html=True)
-    st.markdown("<b>SETTINGS</b>", unsafe_allow_html=True)
 
     preset_options = ["Generic (Statement)", "Generic (Invoice List)"]
     preset_name = st.selectbox("Preset", preset_options, index=0)
@@ -1460,16 +1397,16 @@ with right:
 
     supplier_name = st.text_input("Supplier name", value=str(settings.get("supplier_name", "SUPPLIER")))
 
-    st.markdown("<hr/>", unsafe_allow_html=True)
-    run_btn = st.button("Run reconciliation", type="primary", use_container_width=True)
+    st.markdown("<div style='margin-top: 20px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+    run_btn = safe_primary_button("Run reconciliation", use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<hr/>", unsafe_allow_html=True)
-    st.markdown('<div class="small-muted"><b>ADVANCED</b> (open only if preview looks wrong)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="small-muted">Open advanced only if the preview looks wrong.</div>', unsafe_allow_html=True)
     adv_open = st.checkbox("Open advanced", value=False)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# Welcome state if missing files
 if not (supplier_file and ledger_file and template_file):
     show_welcome_state()
     st.stop()
@@ -1493,6 +1430,7 @@ dedupe_on = True
 if adv_open:
     with st.sidebar:
         st.subheader("Advanced")
+        st.caption("Use this only if the preview looks wrong")
         forced_mode = st.radio("Force supplier type", ["Auto", "Statement", "Invoice List"], index=0)
         stmt_layout_override = st.radio("Statement layout", ["Auto", "debit_credit", "amount_only"], index=0)
         flip_ledger_sign = st.checkbox("Flip ledger sign", value=flip_ledger_sign)
@@ -1500,10 +1438,10 @@ if adv_open:
         date_window_days = st.number_input("Date window days", min_value=0, value=int(date_window_days), step=1)
         min_auto_confidence = st.number_input("Min auto match confidence", min_value=0.0, max_value=1.0, value=float(min_auto_confidence), step=0.01)
 
-        use_recon_format_layout = st.checkbox("Template is RECON FORMART layout", value=use_recon_format_layout)
+        use_recon_format_layout = st.checkbox("Template is RECON FORMAT layout", value=use_recon_format_layout)
         template_has_action = st.checkbox("Template has Action column", value=template_has_action)
 
-        st.caption("Used when RECON FORMART layout is off")
+        st.caption("Used when RECON FORMAT layout is off")
         left_start_cell = st.text_input("Left table start cell", value=left_start_cell)
         right_start_cell = st.text_input("Right table start cell", value=right_start_cell)
 
@@ -1517,55 +1455,69 @@ if adv_open:
 if run_btn:
     is_valid, errors = validate_files(supplier_file, ledger_file, template_file)
     if not is_valid:
-        for e in errors:
-            st.error(e)
+        for error in errors:
+            st.error(error)
         st.stop()
 
-    # Reasoning log (ChatGPT-like)
-    reasoning_log = []
-    def log(msg: str):
-        reasoning_log.append(msg)
+    sbox = status_box("Tarisai is scanning your files")
 
-    with st.spinner("Tarisai is scanning your files..."):
-        log("Checked that all required files are present and valid Excel formats.")
-
-        ledger_best_df, ledger_meta = load_best_table_from_workbook(ledger_file)
-        if ledger_best_df is None:
-            st.error("No usable ledger table detected.")
-            st.stop()
-        log(f"Detected ledger table: sheet '{ledger_meta['sheet_name']}', header row {ledger_meta['header_row'] + 1}.")
-
-        supplier_best_df, supplier_meta = load_best_table_from_workbook(supplier_file)
-        if supplier_best_df is None:
-            st.error("No usable supplier table detected.")
-            st.stop()
-        log(f"Detected supplier table: sheet '{supplier_meta['sheet_name']}', header row {supplier_meta['header_row'] + 1}.")
-
-        auto_mode, auto_stmt_layout, doc_conf = detect_supplier_doc_type(supplier_best_df)
-        chosen_mode = auto_mode
-        chosen_stmt_layout = auto_stmt_layout
-
-        if forced_mode and forced_mode != "Auto":
-            chosen_mode = "statement" if forced_mode == "Statement" else "invoice"
-            log(f"Manual override applied: supplier treated as {forced_mode}.")
+    def step(msg):
+        if sbox is not None:
+            sbox.write(msg)
         else:
-            label = "Statement" if chosen_mode == "statement" else "Invoice List"
-            log(f"Auto-detected supplier type: {label} (confidence {doc_conf:.0%}).")
+            st.info(msg)
 
-        if chosen_mode == "statement":
-            if stmt_layout_override and stmt_layout_override != "Auto":
-                chosen_stmt_layout = stmt_layout_override
-                log(f"Manual override applied: statement layout set to {chosen_stmt_layout}.")
-            else:
-                log(f"Statement layout selected: {chosen_stmt_layout}.")
+    step("Files validated. Scanning for the main tables.")
 
-    # =========================
-    # Process
-    # =========================
-    out_path = None
-    results_left = None
-    results_right = None
-    match_detail_final = None
+    with st.spinner("Detecting ledger table"):
+        ledger_best_df, ledger_meta = load_best_table_from_workbook(ledger_file)
+
+    if ledger_best_df is None:
+        st.error("No usable ledger table detected. Please check your ledger file format.")
+        st.stop()
+
+    step(f"Ledger table found on sheet '{ledger_meta['sheet_name']}' (header row {ledger_meta['header_row'] + 1}).")
+
+    with st.spinner("Detecting supplier table"):
+        supplier_best_df, supplier_meta = load_best_table_from_workbook(supplier_file)
+
+    if supplier_best_df is None:
+        st.error("No usable supplier table detected. Please check your supplier file format.")
+        st.stop()
+
+    step(f"Supplier table found on sheet '{supplier_meta['sheet_name']}' (header row {supplier_meta['header_row'] + 1}).")
+
+    auto_mode, auto_stmt_layout, doc_conf = detect_supplier_doc_type(supplier_best_df)
+    chosen_mode = auto_mode
+    chosen_stmt_layout = auto_stmt_layout
+
+    if forced_mode and forced_mode != "Auto":
+        chosen_mode = "statement" if forced_mode == "Statement" else "invoice"
+        step(f"Supplier type set to {forced_mode}.")
+    else:
+        label = "Statement" if chosen_mode == "statement" else "Invoice List"
+        step(f"Supplier type detected as {label} (confidence {doc_conf:.0%}).")
+
+    if chosen_mode == "statement":
+        if stmt_layout_override and stmt_layout_override != "Auto":
+            chosen_stmt_layout = stmt_layout_override
+            step(f"Statement layout set to {chosen_stmt_layout}.")
+        else:
+            step(f"Statement layout set to {chosen_stmt_layout}.")
+
+    tabs = safe_tabs(["Results", "Previews", "Audit"])
+    tab_results, tab_previews, tab_audit = tabs[0], tabs[1], tabs[2]
+
+    with tab_previews:
+        st.markdown('<div class="tarisai-card">', unsafe_allow_html=True)
+        st.subheader("Detected supplier table preview")
+        st.write(f"Sheet: {supplier_meta['sheet_name']} | Header row: {supplier_meta['header_row'] + 1}")
+        st.dataframe(supplier_best_df.head(30), use_container_width=True)
+
+        st.subheader("Detected ledger table preview")
+        st.write(f"Sheet: {ledger_meta['sheet_name']} | Header row: {ledger_meta['header_row'] + 1}")
+        st.dataframe(ledger_best_df.head(30), use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     if chosen_mode == "statement":
         stmt_kw = PRESETS["Generic (Statement)"]["stmt_keywords"]
@@ -1580,6 +1532,7 @@ if run_btn:
             "desc": first_matching_col(supplier_best_df, stmt_kw.get("desc", [])) or infer_col_by_type(supplier_best_df, "description"),
             "balance": first_matching_col(supplier_best_df, stmt_kw.get("balance", [])),
         }
+
         ledger_auto = {
             "external": first_matching_col(ledger_best_df, led_kw.get("external", [])) or infer_col_by_type(ledger_best_df, "external_doc"),
             "date": first_matching_col(ledger_best_df, led_kw.get("date", [])) or infer_col_by_type(ledger_best_df, "date"),
@@ -1595,6 +1548,7 @@ if run_btn:
             with st.sidebar:
                 st.divider()
                 st.subheader("Column mapping")
+
                 stmt_cols = ["(auto)"] + list(supplier_best_df.columns)
                 ledger_cols = ["(auto)"] + list(ledger_best_df.columns)
 
@@ -1603,6 +1557,7 @@ if run_btn:
                 stmt_colmap["ref"] = mapping_select("Statement reference", stmt_cols, stmt_auto["ref"])
                 stmt_colmap["desc"] = mapping_select("Statement description", stmt_cols, stmt_auto["desc"])
                 stmt_colmap["balance"] = mapping_select("Statement balance (optional)", stmt_cols, stmt_auto["balance"])
+
                 if chosen_stmt_layout == "amount_only":
                     stmt_colmap["amount"] = mapping_select("Statement amount", stmt_cols, stmt_auto["amount"])
                 else:
@@ -1623,38 +1578,45 @@ if run_btn:
             if ledger_colmap.get(k) == "(auto)":
                 ledger_colmap[k] = ""
 
-        log("Mapped columns automatically using header keywords and data type patterns.")
-        log("Normalized supplier statement: date parsing, debit/credit handling, DocID extraction.")
-        log("Normalized ledger: date parsing, sign handling, DocID extraction.")
+        step("Column mapping complete. Normalizing data.")
 
-        with st.spinner("Normalizing supplier statement..."):
+        with st.spinner("Combining statement sheets"):
             stmt_combined, stmt_audit = combine_statement_workbook(
                 supplier_file,
                 layout=chosen_stmt_layout,
                 colmap=stmt_colmap,
                 keywords=stmt_kw,
             )
+
         if stmt_combined.empty:
-            st.error("Statement normalization returned no rows. Open advanced and fix mapping.")
+            st.error("Statement normalization returned no rows. Check column mapping in advanced settings.")
             st.stop()
 
-        with st.spinner("Normalizing ledger..."):
+        step(f"Statement rows normalized: {len(stmt_combined)}")
+
+        supplier_invoice_set = set()
+
+        with st.spinner("Normalizing ledger"):
             ledger_norm, ledger_used = normalize_ledger(
                 ledger_best_df,
                 colmap=ledger_colmap,
                 keywords=led_kw,
-                supplier_invoice_set=set(),
+                supplier_invoice_set=supplier_invoice_set,
                 flip_sign=flip_ledger_sign,
             )
 
-        log("Matched using DocID totals (grouped by DocID, compared absolute totals).")
+        step(f"Ledger rows normalized: {len(ledger_norm)}")
 
-        with st.spinner("Reconciling DocID totals..."):
+        step("Reconciling by DocID totals")
+
+        with st.spinner("Reconciling"):
             results_docid = reconcile_docid(stmt_combined, ledger_norm, amount_tol=float(amount_tolerance))
 
-        match_detail_final = results_docid["match_detail"].copy()
-        results_left = results_docid["left_table"].copy()
-        results_right = results_docid["right_table"].copy()
+        md = results_docid["match_detail"].copy()
+        hi = int((md["match_score"] >= min_auto_confidence).sum())
+        mism = int((md["status"] == "Amount mismatch").sum())
+        left_ct = int(len(results_docid["left_table"]))
+        right_ct = int(len(results_docid["right_table"]))
 
         stmt_balance = float(stmt_combined["balance"].dropna().iloc[-1]) if stmt_combined["balance"].dropna().shape[0] else np.nan
         ledg_bal_col = first_matching_col(ledger_best_df, ["balance", "balance (lcy)"])
@@ -1665,12 +1627,14 @@ if run_btn:
         cands = [d for d in [stmt_max_date, ledg_max_date] if pd.notna(d)]
         as_at = max(cands).to_pydatetime() if cands else datetime.now()
 
-        with st.spinner("Building output workbook..."):
+        step("Building output file")
+
+        with st.spinner("Writing output workbook"):
             if use_recon_format_layout:
                 out_path = export_pack_recon_format(
                     template_upload=template_file,
-                    left_df=results_left,
-                    right_df=results_right,
+                    left_df=results_docid["left_table"],
+                    right_df=results_docid["right_table"],
                     stmt_balance=stmt_balance,
                     ledg_balance=ledg_balance,
                     as_at_dt=as_at,
@@ -1678,13 +1642,13 @@ if run_btn:
                 )
             else:
                 generic_pack = {
-                    "left_table": results_left,
-                    "right_table": results_right,
-                    "match_detail": match_detail_final,
+                    "left_table": results_docid["left_table"],
+                    "right_table": results_docid["right_table"],
+                    "match_detail": results_docid["match_detail"],
                     "missing_in_ledger": results_docid["stmt_only"],
                     "missing_on_supplier": results_docid["ledg_only"],
                     "amount_mismatch": results_docid["mismatches"],
-                    "needs_review": match_detail_final[match_detail_final["match_score"] < min_auto_confidence].copy(),
+                    "needs_review": results_docid["match_detail"][results_docid["match_detail"]["match_score"] < min_auto_confidence].copy(),
                 }
                 out_path = export_pack_generic(
                     template_upload=template_file,
@@ -1693,6 +1657,60 @@ if run_btn:
                     right_start_cell=right_start_cell,
                     action_col=template_has_action,
                 )
+
+        if sbox is not None:
+            try:
+                sbox.update(label="Reconciliation complete", state="complete", expanded=False)
+            except Exception:
+                pass
+
+        with tab_results:
+            st.markdown('<div class="tarisai-card">', unsafe_allow_html=True)
+            st.subheader("Reconciliation Results")
+
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("High confidence matches", hi)
+            with c2:
+                st.metric("Amount mismatches", mism)
+            with c3:
+                st.metric("Missing items", left_ct + right_ct)
+            with c4:
+                st.metric("Total groups", len(md))
+
+            st.markdown("<hr/>", unsafe_allow_html=True)
+
+            st.subheader("Output tables")
+            a, b = st.columns(2)
+            with a:
+                st.write("Ledger items missing on statement")
+                st.dataframe(results_docid["left_table"].head(500), use_container_width=True)
+            with b:
+                st.write("Statement items missing in ledger")
+                st.dataframe(results_docid["right_table"].head(500), use_container_width=True)
+
+            with st.expander("Match detail (top 2000)", expanded=False):
+                st.dataframe(md.sort_values(["match_score"], ascending=False).head(2000), use_container_width=True)
+
+            with open(out_path, "rb") as f:
+                safe_download_button(
+                    "Download reconciliation output",
+                    data=f,
+                    file_name=f"tarisai_recon_{supplier_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with tab_audit:
+            st.markdown('<div class="tarisai-card">', unsafe_allow_html=True)
+            st.subheader("Processing Audit")
+            st.write("Statement sheets audit")
+            st.dataframe(stmt_audit, use_container_width=True)
+            st.write("Ledger columns used")
+            st.json(ledger_used)
+            st.markdown("</div>", unsafe_allow_html=True)
 
     else:
         sup_kw = PRESETS["Generic (Invoice List)"]["supplier_keywords"]
@@ -1704,6 +1722,7 @@ if run_btn:
             "amount": first_matching_col(supplier_best_df, sup_kw.get("amount", [])) or infer_col_by_type(supplier_best_df, "amount"),
             "desc": first_matching_col(supplier_best_df, sup_kw.get("desc", [])) or infer_col_by_type(supplier_best_df, "description"),
         }
+
         ledger_auto = {
             "external": first_matching_col(ledger_best_df, led_kw.get("external", [])) or infer_col_by_type(ledger_best_df, "external_doc"),
             "date": first_matching_col(ledger_best_df, led_kw.get("date", [])) or infer_col_by_type(ledger_best_df, "date"),
@@ -1742,26 +1761,26 @@ if run_btn:
             if ledger_colmap.get(k) == "(auto)":
                 ledger_colmap[k] = ""
 
-        log("Mapped columns automatically using header keywords and data type patterns.")
-        log("Normalized supplier invoice list: date parsing, invoice key cleanup, amount rounding.")
-        log("Normalized ledger: invoice key extraction from external doc, sign handling, payment detection.")
-        log("Matched by invoice reference totals first, then matched remaining items by amount+date window.")
+        step("Column mapping complete. Combining supplier sheets.")
 
-        with st.spinner("Normalizing supplier invoice list..."):
+        with st.spinner("Combining supplier sheets"):
             supplier_combined, supplier_audit = combine_supplier_workbook(
                 supplier_file,
                 colmap=supplier_colmap,
                 keywords=sup_kw,
                 dedupe_on=dedupe_on,
             )
+
         if supplier_combined.empty:
-            st.error("Supplier normalization returned no rows. Open advanced and fix mapping.")
+            st.error("Supplier normalization returned no rows. Check column mapping in advanced settings.")
             st.stop()
+
+        step(f"Supplier rows normalized: {len(supplier_combined)}")
 
         supplier_invoice_set = set(supplier_combined["invoice_key"].dropna().astype(str).unique().tolist())
         supplier_invoice_set = {x for x in supplier_invoice_set if x}
 
-        with st.spinner("Normalizing ledger..."):
+        with st.spinner("Normalizing ledger"):
             ledger_norm, ledger_used = normalize_ledger(
                 ledger_best_df,
                 colmap=ledger_colmap,
@@ -1770,7 +1789,11 @@ if run_btn:
                 flip_sign=flip_ledger_sign,
             )
 
-        with st.spinner("Reconciling..."):
+        step(f"Ledger rows normalized: {len(ledger_norm)}")
+
+        step("Reconciling by invoice references, then payment fallback")
+
+        with st.spinner("Reconciling"):
             results = reconcile_invoice_style(
                 supplier_combined,
                 ledger_norm,
@@ -1779,11 +1802,16 @@ if run_btn:
                 min_auto_conf=float(min_auto_confidence),
             )
 
-        match_detail_final = results["match_detail"].copy()
-        results_left = results["left_table"].copy()
-        results_right = results["right_table"].copy()
+        md = results["match_detail"].copy()
+        hi = int((md["match_score"] >= min_auto_confidence).sum())
+        review = int((md["status"] == "Needs review").sum())
+        mism = int((md["status"] == "Amount mismatch").sum())
+        left_ct = int(len(results["left_table"]))
+        right_ct = int(len(results["right_table"]))
 
-        with st.spinner("Building output workbook..."):
+        step("Building output file")
+
+        with st.spinner("Writing output workbook"):
             out_path = export_pack_generic(
                 template_upload=template_file,
                 results=results,
@@ -1792,122 +1820,72 @@ if run_btn:
                 action_col=template_has_action,
             )
 
-    # =========================
-    # Results UI (compact, no wasted space)
-    # =========================
-    st.markdown('<div class="tarisai-card">', unsafe_allow_html=True)
-    st.markdown("<b>RESULTS</b>", unsafe_allow_html=True)
-    st.markdown("<hr/>", unsafe_allow_html=True)
+        if sbox is not None:
+            try:
+                sbox.update(label="Reconciliation complete", state="complete", expanded=False)
+            except Exception:
+                pass
 
-    total_rows = int(len(match_detail_final)) if match_detail_final is not None else 0
-    hi_conf = int((match_detail_final["match_score"] >= min_auto_confidence).sum()) if total_rows else 0
-    mism = int((match_detail_final["status"] == "Amount mismatch").sum()) if total_rows else 0
-    missing = int((match_detail_final["status"].astype(str).str.contains("Missing", na=False)).sum()) if total_rows else (len(results_left) + len(results_right))
+        with tab_results:
+            st.markdown('<div class="tarisai-card">', unsafe_allow_html=True)
+            st.subheader("Reconciliation Results")
 
-    k1, k2, k3, k4 = st.columns(4)
-    with k1:
-        st.markdown(f'<div class="kpi-box"><div class="kpi-title"><b>HIGH CONFIDENCE</b></div><div class="kpi-value">{hi_conf}</div></div>', unsafe_allow_html=True)
-    with k2:
-        st.markdown(f'<div class="kpi-box"><div class="kpi-title"><b>MISMATCHES</b></div><div class="kpi-value">{mism}</div></div>', unsafe_allow_html=True)
-    with k3:
-        st.markdown(f'<div class="kpi-box"><div class="kpi-title"><b>MISSING</b></div><div class="kpi-value">{missing}</div></div>', unsafe_allow_html=True)
-    with k4:
-        st.markdown(f'<div class="kpi-box"><div class="kpi-title"><b>TOTAL</b></div><div class="kpi-value">{total_rows}</div></div>', unsafe_allow_html=True)
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("High confidence matches", hi)
+            with c2:
+                st.metric("Needs review", review)
+            with c3:
+                st.metric("Amount mismatches", mism)
+            with c4:
+                st.metric("Missing items", left_ct + right_ct)
 
-    st.markdown("<hr/>", unsafe_allow_html=True)
-
-    a, b = st.columns(2)
-    with a:
-        st.markdown("<b>Ledger items missing on supplier statement</b>", unsafe_allow_html=True)
-        st.dataframe(results_left.head(500), use_container_width=True)
-    with b:
-        st.markdown("<b>Supplier items missing in ledger</b>", unsafe_allow_html=True)
-        st.dataframe(results_right.head(500), use_container_width=True)
-
-    st.markdown("<hr/>", unsafe_allow_html=True)
-
-    # Download (no unsupported args)
-    if out_path:
-        with open(out_path, "rb") as f:
-            st.download_button(
-                "Download reconciliation output",
-                data=f,
-                file_name=f"tarisai_recon_{supplier_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # =========================
-    # Ask Tarisai (ChatGPT-like reasoning)
-    # =========================
-    st.markdown('<div class="tarisai-card">', unsafe_allow_html=True)
-    st.markdown("<b>ASK TARISAI</b>", unsafe_allow_html=True)
-    st.markdown('<div class="small-muted">Examples: "Why is HREINV123 unmatched", "show mismatches", "search web VAT invoice rules"</div>', unsafe_allow_html=True)
-
-    q = st.text_input("Your question", value="")
-    ask = st.button("Ask", use_container_width=False)
-
-    colx, coly = st.columns([1.35, 1.0])
-    with colx:
-        st.markdown("<b>AI reasoning trail</b>", unsafe_allow_html=True)
-        st.write("\n".join([f"- {x}" for x in reasoning_log]) if reasoning_log else "No reasoning log yet.")
-
-    with coly:
-        st.markdown("<b>Detection summary</b>", unsafe_allow_html=True)
-        st.write(
-            f"Supplier sheet: {supplier_meta['sheet_name']} (header row {supplier_meta['header_row'] + 1})\n"
-            f"Ledger sheet: {ledger_meta['sheet_name']} (header row {ledger_meta['header_row'] + 1})\n"
-            f"Mode: {'Statement' if chosen_mode == 'statement' else 'Invoice List'}"
-        )
-
-    if ask:
-        if match_detail_final is None or match_detail_final.empty:
-            st.warning("No match detail available to answer from.")
-        else:
-            resp = tarisai_answer(q, match_detail_final)
             st.markdown("<hr/>", unsafe_allow_html=True)
-            st.markdown("<b>Answer</b>", unsafe_allow_html=True)
-            st.text(resp["answer"])
 
-            if resp["rows"] is not None and not resp["rows"].empty:
-                st.markdown("<b>Evidence from your reconciliation</b>", unsafe_allow_html=True)
-                st.dataframe(resp["rows"], use_container_width=True)
+            st.subheader("Output tables")
+            a, b = st.columns(2)
+            with a:
+                st.write("Ledger items missing on supplier")
+                st.dataframe(results["left_table"].head(500), use_container_width=True)
+            with b:
+                st.write("Supplier items missing in ledger")
+                st.dataframe(results["right_table"].head(500), use_container_width=True)
 
-            if resp["web"] is not None:
-                st.markdown("<b>Web lookup</b>", unsafe_allow_html=True)
-                webres = resp["web"]
-                if not webres.get("ok"):
-                    st.write(f"Web lookup failed: {webres.get('error')}")
-                else:
-                    heading = webres.get("heading") or "Result"
-                    text = webres.get("text") or "No summary text returned."
-                    src = webres.get("source") or ""
-                    st.write(f"{heading}\n\n{text}")
-                    if src:
-                        st.write(f"Source: {src}")
-                    rel = webres.get("related") or []
-                    if rel:
-                        st.write("Related:")
-                        for r in rel:
-                            st.write(f"- {r.get('text')} ({r.get('url')})")
+            with st.expander("Needs review (top 2000)", expanded=False):
+                st.dataframe(results["needs_review"].head(2000), use_container_width=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)
+            with st.expander("Match detail (top 2500)", expanded=False):
+                st.dataframe(md.sort_values(["match_score"], ascending=False).head(2500), use_container_width=True)
 
-    # Optional: deeper details without taking space by default
-    with st.expander("Match detail (advanced)", expanded=False):
-        if match_detail_final is not None:
-            st.dataframe(match_detail_final.sort_values(["match_score"], ascending=False).head(3000), use_container_width=True)
+            with open(out_path, "rb") as f:
+                safe_download_button(
+                    "Download reconciliation output",
+                    data=f,
+                    file_name=f"tarisai_recon_{supplier_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with tab_audit:
+            st.markdown('<div class="tarisai-card">', unsafe_allow_html=True)
+            st.subheader("Processing Audit")
+            st.write("Supplier sheets audit")
+            st.dataframe(supplier_audit, use_container_width=True)
+            st.write("Ledger columns used")
+            st.json(ledger_used)
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # =========================
 # Footer
 # =========================
 st.markdown(
-    f"""
-<div style="text-align: center; margin-top: 28px; padding: 16px; color: {WF_MUTED}; font-size: 12px;">
-    <hr style="margin-bottom: 14px;">
-    <div><b>Tarisai</b> reconciliation tool</div>
+    """
+<div style="text-align: center; margin-top: 40px; padding: 20px; color: #666666; font-size: 12px;">
+    <hr style="margin-bottom: 20px;">
+    <div>Tarisai Reconciliation Tool</div>
+    <div style="margin-top: 8px;">Upload. Reconcile. Download.</div>
 </div>
 """,
     unsafe_allow_html=True,
